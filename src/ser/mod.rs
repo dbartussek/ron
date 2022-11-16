@@ -95,6 +95,44 @@ pub struct PrettyConfig {
     /// Whether to serialize strings as escaped strings,
     ///  or fall back onto raw strings if necessary.
     pub escape_strings: bool,
+    /// Which base should numbers be serialized in?
+    pub number_format: PrettyNumberFormat,
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub enum PrettyNumberFormat {
+    Decimal,
+    Binary,
+    Hex,
+}
+impl Default for PrettyNumberFormat {
+    fn default() -> Self {
+        Self::Decimal
+    }
+}
+impl PrettyNumberFormat {
+    fn write_uint<W>(self, mut w: W, v: LargeUInt) -> Result<()>
+    where
+        W: io::Write,
+    {
+        match self {
+            Self::Decimal => write!(w, "{}", v),
+            Self::Binary => write!(w, "0b{:b}", v),
+            Self::Hex => write!(w, "0x{:x}", v),
+        }?;
+        Ok(())
+    }
+    fn write_sint<W>(self, mut w: W, v: LargeSInt) -> Result<()>
+    where
+        W: io::Write,
+    {
+        match self {
+            Self::Decimal => write!(w, "{}", v),
+            Self::Binary => write!(w, "0b{:b}", v),
+            Self::Hex => write!(w, "0x{:x}", v),
+        }?;
+        Ok(())
+    }
 }
 
 impl PrettyConfig {
@@ -246,6 +284,7 @@ impl Default for PrettyConfig {
             extensions: Extensions::empty(),
             compact_arrays: false,
             escape_strings: true,
+            number_format: PrettyNumberFormat::Decimal,
         }
     }
 }
@@ -419,16 +458,20 @@ impl<W: io::Write> Serializer<W> {
 
     fn serialize_sint(&mut self, value: impl Into<LargeSInt>) -> Result<()> {
         // TODO optimize
-        write!(self.output, "{}", value.into())?;
-
-        Ok(())
+        self.pretty
+            .as_ref()
+            .map(|(pretty, _)| pretty.number_format)
+            .unwrap_or(PrettyNumberFormat::default())
+            .write_sint(&mut self.output, value.into())
     }
 
     fn serialize_uint(&mut self, value: impl Into<LargeUInt>) -> Result<()> {
         // TODO optimize
-        write!(self.output, "{}", value.into())?;
-
-        Ok(())
+        self.pretty
+            .as_ref()
+            .map(|(pretty, _)| pretty.number_format)
+            .unwrap_or(PrettyNumberFormat::default())
+            .write_uint(&mut self.output, value.into())
     }
 
     fn write_identifier(&mut self, name: &str) -> Result<()> {
